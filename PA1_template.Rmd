@@ -8,18 +8,98 @@ output:
 
 ## Loading and preprocessing the data
 
+```{r}
+workDir <- "/Users/arnon/Documents/Arnon/Data scientist/Reproducible Research/RepData_PeerAssessment1"
+setwd(workDir)
+zipFile <- file.path(workDir, "activity.zip")
+if (!file.exists(zipFile)) {
+    url <- "https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2Factivity.zip"
+    download.file(url, dest=workDir, method="curl")
+}
+if (!file.exists("activity.csv")) {
+    unzip("activity.zip", exdir=workDir)
+}
+# Reads data
+data <- read.csv("activity.csv", header=T)
+# Here was a code to remove all the missing values, but I remarked it
+# after seeing the "Imputing missing values" section
+# allCases <- data[!is.na(data$steps),]
+data$date <- as.POSIXct(data$date)
 
+```
 
 ## What is mean total number of steps taken per day?
 
+```{r, echo=True}
+### The short way ###
+s1 <- summary(data$steps, digits=4)
+s1[4]
+
+### The longer way ###
+datesList <- unique(data$date)
+datesCounter <- 1
+stepsMean <- 0
+for (curDate in datesList) {
+    stepsMean[datesCounter] <- mean(data[data$date==curDate,1])
+    datesCounter <- datesCounter +1
+}
+mean(stepsMean, na.rm =T)
+# When the number of cases in each day is the same, both ways give the same mean
+```
 
 
 ## What is the average daily activity pattern?
 
+```{r, echo=True, fig.height=4}
+intStepsMean <- with(data, tapply(steps, interval, mean, na.rm=TRUE))
+int <- unique(data$interval)
+plot(int, intStepsMean, type="l")
+```
 
+The 
+```{r}
+n <- max(intStepsMean)
+indx <- which.max(intStepsMean)
+int[indx]
+```
+5-minute interval, on average across all the days in the dataset, contains the maximum number of steps
 
 ## Imputing missing values
 
+The number of rows in the dataset without missing values are:
+``` {r MissingValuses}
+notNA <-complete.cases(data)
+sum(notNA)
+```
+To make the dataset complete I advise to fill each missing data with the mean number of steps for that 5-minute interval
 
+``` {r}
+# Filling up missing values based on the above mentioned starategy 
+for (i in int) {
+    data[data[!notNA,data$interval]==i,data$steps] <- intStepsMean[int==i]
+}
+# Generets histogram for the total number of steps taken every day
+datesList <- unique(data$date)
+datesCounter <- 1
+stepsMean <- 0
+for (curDate in datesList) {
+    stepsMean[datesCounter] <- mean(data[data$date==curDate,1])
+    datesCounter <- datesCounter +1
+}
+hist(stepsMean, main="Histogram of mean steps per a day", xlab="Mean steps", ylab="Frequency (days)")
+
+s2 <- summary(data$steps)
+s2[3:4]
+```
+
+There is no effect on the the calculated mean 'steps per a day' by filling up the missing values using the chosen strategy. The means are the same.
 
 ## Are there differences in activity patterns between weekdays and weekends?
+
+```{r}
+# library(reshape2)
+# Loads needed libraries
+library(plyr)
+data <- mutate(data, dayType=(weekdays(date)=="Saturday" | weekdays(date)=="Sunday"))
+data$dayType <- factor(data$dayType, c(F,T), labels=c("weekday", "weekend"))
+```
