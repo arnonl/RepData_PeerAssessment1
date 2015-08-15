@@ -8,7 +8,7 @@ output:
 
 ## Loading and preprocessing the data
 
-```{r}
+```{r Reads_and_Processes_Date}
 workDir <- "/Users/arnon/Documents/Arnon/Data scientist/Reproducible Research/RepData_PeerAssessment1"
 setwd(workDir)
 zipFile <- file.path(workDir, "activity.zip")
@@ -23,83 +23,97 @@ if (!file.exists("activity.csv")) {
 data <- read.csv("activity.csv", header=T)
 # Here was a code to remove all the missing values, but I remarked it
 # after seeing the "Imputing missing values" section
-# allCases <- data[!is.na(data$steps),]
+# data <- data[!is.na(data$steps),]
 data$date <- as.POSIXct(data$date)
 
+# Loads dependencies
+library(stringr)
+library(plyr)
+
+# The variable "interval" can serve as a variable of two types: a factorial variable and a time variable. As a time variable it has a strange format, basically the time representation without the colon seperation. In order to get a correct representation of the time when generating graphs , one must convert it from integer/character to POSIXct.
+# Adds a new column showing "interval" as POSIXct
+data <- mutate(data, timeInterval=str_pad(data$interval, 4, pad = "0"))
+data$timeInterval <- paste(substr(data$timeInterval,1,2),":",substr(data$timeInterval,3,4),sep="")
+# Note: Time must be in POSIXct and not POSIXlt if you use "complete.cases" function
+data$timeInterval <- as.POSIXct(strptime(data$timeInterval,"%R"))
+# Adds a column indicates an "interval index number"
+data <- mutate(data, intervalIndx=rep(1:288,61))
 ```
 
 ## What is mean total number of steps taken per day?
 
-```{r, echo=True}
-### The short way ###
-s1 <- summary(data$steps, digits=4)
-s1[4]
+```{r Plots_distribution_of_total_steps, echo=TRUE}
 
-### The longer way ###
-datesList <- unique(data$date)
-datesCounter <- 1
-stepsMean <- 0
-for (curDate in datesList) {
-    stepsMean[datesCounter] <- mean(data[data$date==curDate,1])
-    datesCounter <- datesCounter +1
-}
-mean(stepsMean, na.rm =T)
-# When the number of cases in each day is the same, both ways give the same mean
+# Calculates the sum of the steps per day with "aggregate"
+stepsByDaySum <- aggregate(steps ~ date, data=data, sum)
+# Plots a histogram showing the distribution of the "total number of steps per day""
+hist(stepsByDaySum$steps, main="Distribution of total steps per day", xlab="Number of steps", ylab="Frequency (days)",col="dark grey", breaks=8)
 ```
 
+Thus, the mean and median of the total number of steps per day is:
+```{r Reports_Mean_and_Median_for_total_daily_activity}
+s1 <- summary(stepsByDaySum$steps)
+s1[3:4]
+```
 
 ## What is the average daily activity pattern?
 
-```{r, echo=True, fig.height=4}
+```{r, echo=TRUE, fig.height=4}
 intStepsMean <- with(data, tapply(steps, interval, mean, na.rm=TRUE))
-int <- unique(data$interval)
-plot(int, intStepsMean, type="l")
+uTimeInterval <- unique(data$timeInterval)
+uInterval <- unique(data$interval)
+
+plot(uTimeInterval, intStepsMean, type="l", xlab="Hour of the day", ylab="Number of steps")
 ```
 
-The 
-```{r}
+ 
+```{r Shows_Highest_Activity_Time, echo=TRUE}
 n <- max(intStepsMean)
 indx <- which.max(intStepsMean)
-int[indx]
+# Prints the hour in the day that shows, on average across all days, the highest activity level
 ```
-5-minute interval, on average across all the days in the dataset, contains the maximum number of steps
+
+At `r strftime(uTimeInterval[indx], format="%H:%M")` (the `r indx`-th interval), on average across all the days in the dataset, we observe the highest activity in terms of the number of steps taken
 
 ## Imputing missing values
 
-The number of rows in the dataset without missing values are:
-``` {r MissingValuses}
+``` {r Counts_Missing_Valuses}
 notNA <-complete.cases(data)
-sum(notNA)
 ```
-To make the dataset complete I advise to fill each missing data with the mean number of steps for that 5-minute interval
+The number of rows in the dataset without missing values is: `r sum(notNA)`
 
-``` {r}
-# Filling up missing values based on the above mentioned starategy 
-for (i in int) {
-    data[data[!notNA,data$interval]==i,data$steps] <- intStepsMean[int==i]
-}
-# Generets histogram for the total number of steps taken every day
-datesList <- unique(data$date)
-datesCounter <- 1
-stepsMean <- 0
-for (curDate in datesList) {
-    stepsMean[datesCounter] <- mean(data[data$date==curDate,1])
-    datesCounter <- datesCounter +1
-}
-hist(stepsMean, main="Histogram of mean steps per a day", xlab="Mean steps", ylab="Frequency (days)")
+To make the dataset complete I advise filling each missing data with the mean number of steps for that 5-minute interval
 
-s2 <- summary(data$steps)
+``` {r Fills_up_missing_values_and_compere_means}
+# Fills up missing values based on the above mentioned starategy 
+for (i in uInterval) {
+    data[(data[,3]==i & !notNA),1] <- intStepsMean[uInterval==i]
+}
+### Generates a histogram for the total number of steps taken every day ###
+
+# Calculates the sum of the steps per day with "aggregate"
+stepsByDaySum <- aggregate(steps ~ date, data=data, sum)
+# Plots a histogram showing the distribution of the "total number of steps per day""
+hist(stepsByDaySum$steps, main="Distribution of total steps per day", xlab="Number of steps", ylab="Frequency (days)",col="blue", breaks=8)
+
+s2 <- summary(stepsByDaySum$steps)
 s2[3:4]
 ```
 
-There is no effect on the the calculated mean 'steps per a day' by filling up the missing values using the chosen strategy. The means are the same.
+There is no effect on the the calculated mean 'steps per day' by filling up the missing values using the chosen strategy. The means are the same.
 
 ## Are there differences in activity patterns between weekdays and weekends?
 
-```{r}
-# library(reshape2)
+```{r Comperative_activity_plot_by_day_type, echo=TRUE}
 # Loads needed libraries
-library(plyr)
+library(ggplot2)
 data <- mutate(data, dayType=(weekdays(date)=="Saturday" | weekdays(date)=="Sunday"))
 data$dayType <- factor(data$dayType, c(F,T), labels=c("weekday", "weekend"))
+
+# Averages the number of steps over two factors: 5-min interval and dayType(weekday Vs. weekend)
+aggDataMean <- aggregate(steps ~ intervalIndx + dayType, data=data, mean)
+# Plots the two graphs one on top of the other for easy comparison
+qplot(intervalIndx, steps, data=aggDataMean, geom="line", xlab="Interval index (of 5min)", ylab="Mean steps") + facet_grid(dayType ~ .)
 ```
+
+#### There is a clear difference in the steps activity pattern between weekdays and weekends!
